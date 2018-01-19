@@ -12,7 +12,6 @@ var urlutil = require('cordova/urlutil');
 
 var CAMERA_STREAM_STATE_CHECK_RETRY_TIMEOUT = 200; // milliseconds
 var OPERATION_IS_IN_PROGRESS = -2147024567;
-var REGDB_E_CLASSNOTREG = -2147221164;
 var INITIAL_FOCUS_DELAY = 200; // milliseconds
 var CHECK_PLAYING_TIMEOUT = 100; // milliseconds
 
@@ -441,18 +440,7 @@ module.exports = {
         function startPreview() {
             return findCamera()
             .then(function (id) {
-                var captureSettings;
-
-                try {
-                    captureSettings = new Windows.Media.Capture.MediaCaptureInitializationSettings();
-                } catch (e) {
-                    if (e.number === REGDB_E_CLASSNOTREG) {
-                        throw new Error('Ensure that you have Windows Media Player and Media Feature pack installed.');
-                    }
-
-                    throw e;
-                }
-
+                var captureSettings = new Windows.Media.Capture.MediaCaptureInitializationSettings();
                 captureSettings.streamingCaptureMode = Windows.Media.Capture.StreamingCaptureMode.video;
                 captureSettings.photoCaptureSource = Windows.Media.Capture.PhotoCaptureSource.videoPreview;
                 captureSettings.videoDeviceId = id;
@@ -546,26 +534,11 @@ module.exports = {
             Windows.Graphics.Display.DisplayInformation.getForCurrentView().removeEventListener("orientationchanged", updatePreviewForRotation, false);
             document.removeEventListener('backbutton', cancelPreview);
 
-            if (capturePreview) {
-                var isPlaying = !capturePreview.paused && !capturePreview.ended && capturePreview.readyState > 2;
-                if (isPlaying) {
-                    capturePreview.pause();
-                }
-
-                // http://stackoverflow.com/a/28060352/4177762
-                capturePreview.src = "";
-                if (capturePreview.load) {
-                    capturePreview.load();
-                }
-            }
+            capturePreview.pause();
+            capturePreview.src = null;
 
             if (capturePreviewFrame) {
-                try {
-                    document.body.removeChild(capturePreviewFrame);
-                } catch (e) {
-                    // Catching NotFoundError
-                    console.error(e);
-                }
+                document.body.removeChild(capturePreviewFrame);
             }
             capturePreviewFrame = null;
 
@@ -573,12 +546,7 @@ module.exports = {
             reader = null;
 
             if (capture) {
-                try {
-                    promise = capture.stopRecordAsync();
-                } catch (e) {
-                    // Catching NotFoundError
-                    console.error(e);
-                }
+                promise = capture.stopRecordAsync();
             }
             capture = null;
 
@@ -602,10 +570,8 @@ module.exports = {
             }
         }
 
-        // Timeout is needed so that the .done finalizer below can be attached to the promise.
-        BarcodeReader.scanPromise = WinJS.Promise.timeout()
-        .then(function() {
-            createPreview();
+        BarcodeReader.scanPromise = WinJS.Promise.wrap(createPreview())
+        .then(function () {
             checkCancelled();
             return startPreview();
         })
@@ -634,10 +600,7 @@ module.exports = {
                 format: result && BARCODE_FORMAT[result.barcodeFormat],
                 cancelled: !result
             });
-        });
-
-        // Catching any errors here
-        BarcodeReader.scanPromise.done(function () { }, function (error) {
+        }, function (error) {
             // Suppress null result (cancel) on suspending
             if (BarcodeReader.suspended) {
                 return;
